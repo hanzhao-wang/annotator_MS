@@ -129,23 +129,23 @@ def build(
 
 def main():
     data_names=[
-        'RLHFlow/UltraFeedback-preference-standard',
+        #'RLHFlow/UltraFeedback-preference-standard',
         "RLHFlow/Helpsteer-preference-standard",
-        "Skywork-Reward-Preference-80K-v0.2",
+        #"Skywork-Reward-Preference-80K-v0.2",
         "RLHFlow/PKU-SafeRLHF-30K-standard",
     ]
-    model_names=['Skywork/Skywork-Reward-Llama-3.1-8B',
+    model_names=[#'Skywork/Skywork-Reward-Llama-3.1-8B',
                  'Skywork/Skywork-Reward-Llama-3.1-8B',
-                 'Skywork-Reward-Gemma-2-27B-v0.2',
+                 #'Skywork-Reward-Gemma-2-27B-v0.2',
                  'PKU-Alignment/beaver-7b-v2.0-reward']
-    build_froms=['local',
+    build_froms=[#'local',
                  'local',
-                 'hub',
+                 #'hub',
                  'local']
     save_as_paths=[
-        'RLHFlow/UltraFeedback-preference-standard',
+        #'RLHFlow/UltraFeedback-preference-standard',
         'RLHFlow/Helpsteer-preference-standard',
-        'prefer_skywork_Skywork/Skywork-Reward-Gemma-2-27B-v0.2',
+        #'prefer_skywork_Skywork/Skywork-Reward-Gemma-2-27B-v0.2',
         'RLHFlow/PKU-preference-standard',
     ]
     for data_name, model_name, built_from, save_as_path in zip(data_names, model_names, build_froms, save_as_paths):
