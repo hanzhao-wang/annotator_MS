@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import *
 
 import click
@@ -93,20 +94,23 @@ def infer_rm_score_formatted(
     ds_rslt = Dataset.from_list(ds_processed)
     ds_rslt.save_to_disk(f"statdata/{save_name}_{model_name}")
 
-def build(built_from: Literal["local", "hub"],
+def build(
+    built_from: Literal["local", "hub"],
     data_path: str = "RLHFlow/UltraFeedback-preference-standard",
-    model_name: str = "Skywork/Skywork-Reward-Llama-3.1-8B"):
+    model_name: str = "Skywork/Skywork-Reward-Llama-3.1-8B",
+):
     if built_from == "local":
-        ds = load_dataset(
-            data_path, name='default', split="train"
-        )
+        ds = load_dataset(data_path, name="default", split="train")
+        target_dir = Path("statdata") / data_path
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        ds.save_to_disk(target_dir.as_posix())
         if model_name != "":
             infer_rm_score_formatted(
                 ds,
                 model_name=model_name,
                 save_name="",
             )
-        
+
     elif built_from == "hub":
         if data_path == "Skywork-Reward-Preference-80K-v0.2":
             ds = load_dataset(
