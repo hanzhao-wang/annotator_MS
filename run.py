@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 import random
 from functools import partial
 from pathlib import Path
@@ -49,6 +50,31 @@ def set_random_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def ensure_single_process_dist_defaults():
+    """
+    DeepSpeed tries to discover MPI settings when rank/world info is missing,
+    which pulls in mpi4py/libmpi. On single-device setups we can short-circuit
+    that path by pre-populating the environment variables.
+    """
+    defaults = {
+        "RANK": "0",
+        "LOCAL_RANK": "0",
+        "WORLD_SIZE": "1",
+        "MASTER_ADDR": "127.0.0.1",
+        "MASTER_PORT": "29500",
+    }
+    missing = {k: v for k, v in defaults.items() if k not in os.environ}
+    if not missing:
+        return
+
+    for key, value in missing.items():
+        os.environ[key] = value
+    os.environ.setdefault("DEEPSPEED_DISABLE_MPI", "1")
+    logger.info(
+        "Distributed env vars were missing; defaulting to single-process values to avoid MPI dependency."
+    )
+
+
 @click.command()
 @click.argument("script_config_path", type=str)
 @click.option("--seed", type=int, default=None, help="Random seed")
@@ -72,6 +98,7 @@ def main(
         lr = script_args.learning_rate
 
     set_random_seed(seed)
+    ensure_single_process_dist_defaults()
 
     tokenizer_name = script_args.model_name
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=False)
