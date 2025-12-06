@@ -62,30 +62,59 @@ def _find_free_port() -> str:
         return str(s.getsockname()[1])
 
 
+def _port_is_available(port: int) -> bool:
+    """Return True if `port` can be bound on localhost."""
+    with contextlib.closing(
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ) as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+        return True
+
+
 def ensure_single_process_dist_defaults():
     """
     DeepSpeed tries to discover MPI settings when rank/world info is missing,
     which pulls in mpi4py/libmpi. On single-device setups we can short-circuit
     that path by pre-populating the environment variables.
     """
-    # Use a dynamic port to avoid collisions when multiple single-process jobs
-    # are launched on the same machine.
+    try:
+        world_size = int(os.environ.get("WORLD_SIZE", "1") or "1")
+    except ValueError:
+        world_size = 1
+
+    # Respect explicit multi-process settings; only override for single-device use.
+    if world_size > 1:
+        return
+
     defaults = {
         "RANK": "0",
         "LOCAL_RANK": "0",
         "WORLD_SIZE": "1",
         "MASTER_ADDR": "127.0.0.1",
-        "MASTER_PORT": _find_free_port(),
     }
-    missing = {k: v for k, v in defaults.items() if k not in os.environ}
-    if not missing:
-        return
 
-    for key, value in missing.items():
+    current_port = os.environ.get("MASTER_PORT")
+    if current_port and current_port.isdigit():
+        port_int = int(current_port)
+        if _port_is_available(port_int):
+            defaults["MASTER_PORT"] = current_port
+        else:
+            defaults["MASTER_PORT"] = _find_free_port()
+    else:
+        defaults["MASTER_PORT"] = _find_free_port()
+
+    # Keep Accelerate in sync with the chosen port.
+    defaults["MAIN_PROCESS_PORT"] = defaults["MASTER_PORT"]
+
+    for key, value in defaults.items():
         os.environ[key] = value
     os.environ.setdefault("DEEPSPEED_DISABLE_MPI", "1")
     logger.info(
-        "Distributed env vars were missing; defaulting to single-process values to avoid MPI dependency."
+        "Distributed env vars prepared for single-process run (MASTER_PORT=%s).",
+        defaults["MASTER_PORT"],
     )
 
 
