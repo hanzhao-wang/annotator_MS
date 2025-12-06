@@ -60,8 +60,8 @@ def infer_rm_score_formatted(
         neg_input = _format_inputs(ds[i]["rejected"])
 
         with torch.no_grad():
-            pos_out = rm(pos_input).logits[0][0].item()
-            neg_out = rm(neg_input).logits[0][0].item()
+            pos_out = rm(**pos_input).logits[0][0].item()
+            neg_out = rm(**neg_input).logits[0][0].item()
 
         sample = ds[i]
         sample.update(
