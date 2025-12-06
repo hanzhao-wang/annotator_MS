@@ -148,7 +148,13 @@ class RewardTrainer(Trainer):
     def __init__(self, *args, delta=1.0, tie_thrsd=0.5, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(
+        self,
+        model,
+        inputs,
+        return_outputs=False,
+        num_items_in_batch: int | None = None,  # HF passes this in newer versions
+    ):
         rewards = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -169,7 +175,13 @@ class RewardTrainerWithOracleCE(Trainer):
     def __init__(self, *args, delta=1.0, tie_thrsd=0.5, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(
+        self,
+        model,
+        inputs,
+        return_outputs=False,
+        num_items_in_batch: int | None = None,
+    ):
         rewards = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -198,7 +210,13 @@ class RewardTrainerWithRingeMargin(Trainer):
         super().__init__(*args, **kwargs)
         self.delta = delta
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(
+        self,
+        model,
+        inputs,
+        return_outputs=False,
+        num_items_in_batch: int | None = None,
+    ):
         rewards = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -234,7 +252,13 @@ class BTTRewardTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.theta = delta  # ! note here we use `delta` as the dummy encoding parameter for theta in BTT
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(
+        self,
+        model,
+        inputs,
+        return_outputs=False,
+        num_items_in_batch: int | None = None,
+    ):
         rewards = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
