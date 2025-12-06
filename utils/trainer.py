@@ -42,53 +42,62 @@ def compute_metrics(eval_pred):
 # ! the nan values are handled for BTT model.
 
 
+def _extract_pairwise_logits_and_labels(eval_pred):
+    """
+    Trainer returns flattened logits for j/k pairs; regroup them and align with labels.
+    Works with either tuple(predictions, ...) or raw ndarray predictions.
+    """
+    logits = eval_pred.predictions
+    if isinstance(logits, (tuple, list)):
+        logits = logits[0]
+    logits = np.asarray(logits, dtype=float).squeeze()
+    if logits.ndim > 1:
+        logits = logits.reshape(-1)
+    if logits.size % 2 != 0:
+        # Drop the last stray logit to keep pairs aligned instead of failing hard.
+        logits = logits[:-1]
+
+    labels = eval_pred.label_ids
+    if isinstance(labels, (tuple, list)) and len(labels) >= 2:
+        labels_j = np.asarray(labels[0], dtype=float).reshape(-1)
+        labels_k = np.asarray(labels[1], dtype=float).reshape(-1)
+    else:
+        labels_arr = np.asarray(labels, dtype=float)
+        if labels_arr.ndim == 2 and labels_arr.shape[1] >= 2:
+            labels_j, labels_k = labels_arr[:, 0], labels_arr[:, 1]
+        else:
+            labels_j = labels_arr[0::2]
+            labels_k = labels_arr[1::2]
+
+    pair_len = min(len(labels_j), len(labels_k), logits.size // 2)
+    rewards_j = logits[0 : 2 * pair_len : 2]
+    rewards_k = logits[1 : 2 * pair_len : 2]
+    labels_j = labels_j[:pair_len]
+    labels_k = labels_k[:pair_len]
+
+    # mask out nans to keep metrics finite
+    rewards_j = np.nan_to_num(rewards_j)
+    rewards_k = np.nan_to_num(rewards_k)
+    labels_j = np.nan_to_num(labels_j)
+    labels_k = np.nan_to_num(labels_k)
+    return rewards_j, rewards_k, labels_j, labels_k
+
+
 def compute_CE_oracle(eval_pred):
     result = {}
-    pos_predictions_scores = eval_pred.predictions[0]
-    neg_predictions_scores = eval_pred.predictions[1]
-    pos_true_scores = eval_pred.label_ids[0]
-    neg_true_scores = eval_pred.label_ids[1]
+    rewards_j, rewards_k, scores_j, scores_k = _extract_pairwise_logits_and_labels(
+        eval_pred
+    )
+    score_diff = torch.tensor(scores_j - scores_k, dtype=torch.float32)
+    pred_diff = torch.tensor(rewards_j - rewards_k, dtype=torch.float32)
 
-    # ! if containing nan in predictions_scores, print warning
-    if (
-        np.isnan(pos_predictions_scores).any()
-        or np.isnan(neg_predictions_scores).any()
-    ):
-        print("[Eval] Warning: nan in predictions_scores")
-
-    # ! we make an extra masking step to mask all the possbile nan values in predictions_scores
-    pos_predictions_scores = np.nan_to_num(pos_predictions_scores)
-    neg_predictions_scores = np.nan_to_num(neg_predictions_scores)
-
+    target_prob = nn.functional.sigmoid(score_diff)
     oracle_CE_loss = (
-        -nn.functional.logsigmoid(
-            torch.tensor(
-                pos_predictions_scores - neg_predictions_scores,
-                dtype=torch.float32,
-            )
-        )
-        * nn.functional.sigmoid(
-            torch.tensor(pos_true_scores - neg_true_scores, dtype=torch.float32)
-        )
-        - nn.functional.logsigmoid(
-            torch.tensor(
-                neg_predictions_scores - pos_predictions_scores,
-                dtype=torch.float32,
-            )
-        )
-        * (
-            1
-            - nn.functional.sigmoid(
-                torch.tensor(
-                    pos_true_scores - neg_true_scores, dtype=torch.float32
-                )
-            )
-        )
+        -nn.functional.logsigmoid(pred_diff) * target_prob
+        - nn.functional.logsigmoid(-pred_diff) * (1 - target_prob)
     ).mean()
 
-    accuracy = np.sum(pos_predictions_scores > neg_predictions_scores) / len(
-        pos_predictions_scores
-    )
+    accuracy = float(np.mean(rewards_j > rewards_k))
 
     result["oracle_CE_loss"] = oracle_CE_loss.item()
     result["binary_accuracy"] = accuracy
@@ -98,45 +107,21 @@ def compute_CE_oracle(eval_pred):
 
 def compute_ML_oracle(eval_pred, delta=1):
     result = {}
-    pos_predictions_scores = eval_pred.predictions[0]
-    neg_predictions_scores = eval_pred.predictions[1]
-    pos_true_scores = eval_pred.label_ids[0]
-    neg_true_scores = eval_pred.label_ids[1]
-
-    # ! if containing nan in predictions_scores, print warning
-    if (
-        np.isnan(pos_predictions_scores).any()
-        or np.isnan(neg_predictions_scores).any()
-    ):
-        print("[Eval] Warning: nan in predictions_scores")
-
-    # ! we make an extra masking step to mask all the possbile nan values in predictions_scores
-    pos_predictions_scores = np.nan_to_num(pos_predictions_scores)
-    neg_predictions_scores = np.nan_to_num(neg_predictions_scores)
+    rewards_j, rewards_k, scores_j, scores_k = _extract_pairwise_logits_and_labels(
+        eval_pred
+    )
 
     true_prob = nn.functional.sigmoid(
-        torch.tensor(pos_true_scores - neg_true_scores, dtype=torch.float32)
+        torch.tensor(scores_j - scores_k, dtype=torch.float32)
     )
+    score_gap = torch.tensor(rewards_j - rewards_k, dtype=torch.float32)
+
     oracle_ML_loss = (
-        nn.functional.relu(
-            torch.tensor(
-                delta / 2 - (pos_predictions_scores - neg_predictions_scores),
-                dtype=torch.float32,
-            )
-        )
-        * true_prob
-        + nn.functional.relu(
-            torch.tensor(
-                delta / 2 + (pos_predictions_scores - neg_predictions_scores),
-                dtype=torch.float32,
-            )
-        )
-        * (1 - true_prob)
+        nn.functional.relu(delta / 2 - score_gap) * true_prob
+        + nn.functional.relu(delta / 2 + score_gap) * (1 - true_prob)
     ).mean()
 
-    accuracy = np.sum(pos_predictions_scores > neg_predictions_scores) / len(
-        pos_predictions_scores
-    )
+    accuracy = float(np.mean(rewards_j > rewards_k))
 
     result["oracle_ML_loss"] = oracle_ML_loss.item()
     result["binary_accuracy"] = accuracy

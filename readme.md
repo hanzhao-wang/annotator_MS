@@ -42,14 +42,13 @@ python Section4.py
 - Simulate annotated datasets under self-consistency vs expert monitoring and linear/binary contracts (fair monitoring budget):  
   `python downstream_contract_experiment.py --dataset helpsteer --dataset pku --monitor self --monitor expert --contract`
 - The script saves simulated datasets to `statdata/simulated/...` with a standard 80/20 train/test split, corrupts only the train split, and keeps the original test split for evaluation. It emits JSON configs in `paper_experiment_configs/` that point `run.py` to train (simulated) and eval (original) paths. Add `--train` to launch reward-model training immediately for each scenario.
-- **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-eta*/<run>/trainer_state.json`, generate a summary chart with  
+- **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-eta*/<run>/trainer_state.json`, generate a summary chart (default is oracle CE loss, lower is better) with  
   ```bash
   python3 visualize_downstream_rm.py \
     --results-root bt_models \
-    --metric eval_binary_accuracy \
     --output fig/downstream_reward_models.png
   ```  
-  Use `--metric eval_oracle_CE_loss --lower-is-better` if you prefer loss metrics, and `--show` to display the figure interactively. The script writes the plot to `fig/downstream_reward_models.png` and prints per-scenario means/standard deviations so you can compare self vs. expert monitoring performance.
+  Pass `--metric eval_binary_accuracy --higher-is-better` to switch to accuracy, and `--show` to display the figure interactively. The script writes the plot to `fig/downstream_reward_models.png` and prints per-scenario means/standard deviations so you can compare self vs. expert monitoring performance on the clean eval split.
 
 ## Acknowledgements
 This codebase is built on top of [RLHFlow](https://github.com/RLHFlow/RLHF-Reward-Modeling/tree/main/bradley-terry-rm). Special thanks to its creators for their valuable contributions and insights.

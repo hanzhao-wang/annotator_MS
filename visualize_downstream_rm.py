@@ -159,6 +159,7 @@ def plot_monitor_comparison(
     output_path: Path,
     show: bool,
     dpi: int,
+    higher_is_better: bool,
 ):
     group_pairs = {(key[0], key[1]) for key in grouped_stats.keys()}
     group_order = build_group_order(group_pairs)
@@ -170,6 +171,7 @@ def plot_monitor_comparison(
     x = np.arange(len(group_order))
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
+    all_heights = []
     for idx, monitor in enumerate(MONITOR_ORDER):
         heights = []
         errors = []
@@ -185,6 +187,7 @@ def plot_monitor_comparison(
                 heights.append(np.nan)
                 errors.append(0.0)
                 counts.append(0)
+        all_heights.extend([h for h in heights if not np.isnan(h)])
         offset = (idx - (len(MONITOR_ORDER) - 1) / 2) * width
         bars = ax.bar(
             x + offset,
@@ -207,12 +210,18 @@ def plot_monitor_comparison(
                 fontsize=10,
             )
 
-    ax.set_ylabel(metric_name.replace("_", " ").title())
+    ylabel = metric_name.replace("_", " ").title()
+    if not higher_is_better:
+        ylabel += " (lower is better)"
+    ax.set_ylabel(ylabel)
     ax.set_xticks(x)
     ax.set_xticklabels(
         [f"{dataset}\n{contract.title()} contract" for dataset, contract in group_order]
     )
-    ax.set_ylim(0, 1)
+    if all_heights:
+        lo, hi = min(all_heights), max(all_heights)
+        pad = max(0.05 * (hi - lo), 0.05 * max(abs(lo), 1.0))
+        ax.set_ylim(lo - pad, hi + pad)
     ax.legend()
     ax.set_title("Reward-model eval by monitoring regime")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
@@ -270,13 +279,13 @@ def print_summary_table(
 @click.option(
     "--metric",
     "metric_name",
-    default="eval_binary_accuracy",
+    default="eval_oracle_CE_loss",
     show_default=True,
     help="Evaluation metric to aggregate from trainer_state.json.",
 )
 @click.option(
     "--higher-is-better/--lower-is-better",
-    default=True,
+    default=False,
     show_default=True,
     help="Whether larger metric values are better when selecting the best checkpoint.",
 )
@@ -309,7 +318,9 @@ def main(
 
     grouped_stats = summarize_by_group(records)
     print_summary_table(grouped_stats, metric_name)
-    plot_monitor_comparison(grouped_stats, metric_name, output, show, dpi)
+    plot_monitor_comparison(
+        grouped_stats, metric_name, output, show, dpi, higher_is_better
+    )
 
 
 if __name__ == "__main__":

@@ -217,6 +217,15 @@ def main(
     else:
         supported_keys = set(ta_signature.parameters.keys())
         supported_keys.discard("self")
+        # HF renamed `evaluation_strategy` -> `eval_strategy` in newer releases.
+        if (
+            "evaluation_strategy" in training_args_kwargs
+            and "evaluation_strategy" not in supported_keys
+            and "eval_strategy" in supported_keys
+        ):
+            training_args_kwargs["eval_strategy"] = training_args_kwargs.pop(
+                "evaluation_strategy"
+            )
         filtered_training_args_kwargs = {
             key: value
             for key, value in training_args_kwargs.items()
