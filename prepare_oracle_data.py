@@ -47,13 +47,31 @@ def infer_rm_score_formatted(
 
     use_chat_template = bool(getattr(rm_tokenizer, "chat_template", None))
 
+    max_length = getattr(rm_tokenizer, "model_max_length", 4096)
+    if (
+        max_length is None
+        or not isinstance(max_length, int)
+        or max_length <= 0
+        or max_length > 32768
+    ):
+        max_length = 4096
+
     def _format_inputs(sample):
         if use_chat_template:
             return rm_tokenizer.apply_chat_template(
-                sample, tokenize=True, return_tensors="pt"
+                sample,
+                tokenize=True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=max_length,
             ).to(dummy_device)
         plain_text = _list_to_plain_text(sample)
-        return rm_tokenizer(plain_text, return_tensors="pt").to(dummy_device)
+        return rm_tokenizer(
+            plain_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=max_length,
+        ).to(dummy_device)
 
     for i in tqdm(range(len(ds)), desc=f"RM inference with {model_name}"):
         pos_input = _format_inputs(ds[i]["chosen"])
