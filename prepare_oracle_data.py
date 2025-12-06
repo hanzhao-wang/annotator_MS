@@ -58,14 +58,13 @@ def infer_rm_score_formatted(
 
     def _format_inputs(sample):
         if use_chat_template:
-            return rm_tokenizer.apply_chat_template(
+            plain_text = rm_tokenizer.apply_chat_template(
                 sample,
-                tokenize=True,
-                return_tensors="pt",
-                truncation=True,
-                max_length=max_length,
-            ).to(dummy_device)
-        plain_text = _list_to_plain_text(sample)
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+        else:
+            plain_text = _list_to_plain_text(sample)
         return rm_tokenizer(
             plain_text,
             return_tensors="pt",
