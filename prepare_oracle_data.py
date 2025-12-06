@@ -13,7 +13,6 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 def infer_rm_score_formatted(
     ds: Dataset,
     model_name: str = "Skywork/Skywork-Reward-Llama-3.1-8B",
-    save_name: str = "dummy",
 ):
     ds_processed = []
 
@@ -96,40 +95,38 @@ def infer_rm_score_formatted(
         ds_processed.append(sample)
 
     ds_rslt = Dataset.from_list(ds_processed)
-    ds_rslt.save_to_disk(f"statdata/{save_name}_{model_name}")
+    return ds_rslt
 
 def build(
     built_from: Literal["local", "hub"],
     data_path: str = "RLHFlow/UltraFeedback-preference-standard",
     model_name: str = "Skywork/Skywork-Reward-Llama-3.1-8B",
+    save_as_path: str | None = None,
 ):
+    target_path = save_as_path or data_path
     if built_from == "local":
         ds = load_dataset(data_path, name="default", split="train")
-        target_dir = Path("statdata") / data_path
-        target_dir.parent.mkdir(parents=True, exist_ok=True)
-        ds.save_to_disk(target_dir.as_posix())
-        if model_name != "":
-            infer_rm_score_formatted(
+        if model_name:
+            ds = infer_rm_score_formatted(
                 ds,
                 model_name=model_name,
-                save_name="",
             )
+        target_dir = Path("statdata") / target_path
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        ds.save_to_disk(target_dir.as_posix())
 
     elif built_from == "hub":
         if data_path == "Skywork-Reward-Preference-80K-v0.2":
             ds = load_dataset(
                 "BigCatc/Skywork-Reward-Preference-80K-v0.2-ordinal", split="train"
             )
-            ds.save_to_disk(
-                "statdata/prefer_skywork_Skywork/Skywork-Reward-Gemma-2-27B-v0.2"
-            )
         else:
             ds = load_dataset(
                 data_path, split="train"
             )
-            ds.save_to_disk(
-                "statdata/"+data_path
-            )
+        target_dir = Path("statdata") / target_path
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        ds.save_to_disk(target_dir.as_posix())
 
 def main():
     data_names=[
@@ -146,10 +143,17 @@ def main():
                  'local',
                  'hub',
                  'local']
-    for data_name, model_name, built_from in zip(data_names, model_names, build_froms):
+    save_as_paths=[
+        'RLHFlow/UltraFeedback-preference-standard',
+        'RLHFlow/Helpsteer-preference-standard',
+        'prefer_skywork_Skywork/Skywork-Reward-Gemma-2-27B-v0.2',
+        'RLHFlow/PKU-preference-standard',
+    ]
+    for data_name, model_name, built_from, save_as_path in zip(data_names, model_names, build_froms, save_as_paths):
         build(built_from=built_from,
               data_path=data_name,
-              model_name=model_name)
+              model_name=model_name,
+              save_as_path=save_as_path)
 
 
 if __name__ == "__main__":
