@@ -81,12 +81,16 @@ def infer_rm_score_formatted(
         with torch.no_grad():
             pos_out = rm(**pos_input).logits[0][0].item()
             neg_out = rm(**neg_input).logits[0][0].item()
+            preference_score = torch.sigmoid(
+                torch.tensor(pos_out - neg_out, dtype=torch.float32)
+            ).item()
 
         sample = ds[i]
         sample.update(
             {
                 "chosen_score": pos_out,
                 "rejected_score": neg_out,
+                "preference_score": preference_score,
             }
         )
         ds_processed.append(sample)
@@ -134,8 +138,8 @@ def main():
         "Skywork-Reward-Preference-80K-v0.2",
         "RLHFlow/PKU-SafeRLHF-30K-standard",
     ]
-    model_names=['',
-                 '',
+    model_names=['Skywork/Skywork-Reward-Llama-3.1-8B',
+                 'Skywork/Skywork-Reward-Llama-3.1-8B',
                  'Skywork-Reward-Gemma-2-27B-v0.2',
                  'PKU-Alignment/beaver-7b-v2.0-reward']
     build_froms=['local',
