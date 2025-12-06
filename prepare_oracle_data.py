@@ -23,6 +23,7 @@ def infer_rm_score_formatted(
         device_map="auto",
         attn_implementation="eager",  # specified by official
         num_labels=1,
+        trust_remote_code=True,  # needed for custom reward heads like PKU Beaver
     )
 
     dummy_device = "cuda:0"
