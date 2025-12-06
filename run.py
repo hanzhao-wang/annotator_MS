@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import random
 from functools import partial
 from pathlib import Path
@@ -133,37 +134,64 @@ def main(
         )
     
     output_name += "train_size" + str(n_samples/1024)
-    logger.info("train_dataset size:", len(train_dataset))
-    logger.info("eval_dataset size:", len(eval_dataset))
+    logger.info(f"train_dataset size: {len(train_dataset)}")
+    logger.info(f"eval_dataset size: {len(eval_dataset)}")
 
-    training_args = TrainingArguments(
-        output_dir=output,
-        learning_rate=lr,
-        per_device_train_batch_size=script_args.per_device_train_batch_size,
-        per_device_eval_batch_size=script_args.per_device_eval_batch_size,
-        num_train_epochs=script_args.num_train_epochs,
-        weight_decay=script_args.weight_decay,
-        adam_beta1=script_args.adam_beta1,
-        evaluation_strategy="steps",
-        eval_steps=script_args.eval_every_steps,
-        save_strategy="no",  # ! not saving during training
-        # save_steps=script_args.save_every_steps,
-        gradient_accumulation_steps=script_args.gradient_accumulation_steps,
-        gradient_checkpointing=script_args.gradient_checkpointing,
-        deepspeed=script_args.deepspeed,
-        local_rank=script_args.local_rank,
-        remove_unused_columns=False,
-        label_names=["labels_j", "labels_k"],
-        bf16=script_args.bf16,
-        logging_strategy="steps",
-        logging_steps=16,
-        optim=script_args.optim,
-        lr_scheduler_type=script_args.lr_scheduler_type,
-        warmup_ratio=script_args.warmup_ratio,
-        report_to="wandb",
-        include_inputs_for_metrics=True,
-        seed=seed,
+    training_args_kwargs = {
+        "output_dir": output,
+        "learning_rate": lr,
+        "per_device_train_batch_size": script_args.per_device_train_batch_size,
+        "per_device_eval_batch_size": script_args.per_device_eval_batch_size,
+        "num_train_epochs": script_args.num_train_epochs,
+        "weight_decay": script_args.weight_decay,
+        "adam_beta1": script_args.adam_beta1,
+        "evaluation_strategy": "steps",
+        "eval_steps": script_args.eval_every_steps,
+        "save_strategy": "no",  # ! not saving during training
+        # "save_steps": script_args.save_every_steps,
+        "gradient_accumulation_steps": script_args.gradient_accumulation_steps,
+        "gradient_checkpointing": script_args.gradient_checkpointing,
+        "deepspeed": script_args.deepspeed,
+        "local_rank": script_args.local_rank,
+        "remove_unused_columns": False,
+        "label_names": ["labels_j", "labels_k"],
+        "bf16": script_args.bf16,
+        "logging_strategy": "steps",
+        "logging_steps": 16,
+        "optim": script_args.optim,
+        "lr_scheduler_type": script_args.lr_scheduler_type,
+        "warmup_ratio": script_args.warmup_ratio,
+        "report_to": "wandb",
+        "include_inputs_for_metrics": True,
+        "seed": seed,
+    }
+
+    ta_signature = inspect.signature(TrainingArguments.__init__)
+    has_var_kwargs = any(
+        param.kind == inspect.Parameter.VAR_KEYWORD
+        for param in ta_signature.parameters.values()
     )
+    if has_var_kwargs:
+        filtered_training_args_kwargs = training_args_kwargs
+    else:
+        supported_keys = set(ta_signature.parameters.keys())
+        supported_keys.discard("self")
+        filtered_training_args_kwargs = {
+            key: value
+            for key, value in training_args_kwargs.items()
+            if key in supported_keys
+        }
+        dropped = sorted(
+            key
+            for key in training_args_kwargs
+            if key not in filtered_training_args_kwargs
+        )
+        if dropped:
+            logger.warning(
+                f"TrainingArguments dropped unsupported kwargs: {dropped}"
+            )
+
+    training_args = TrainingArguments(**filtered_training_args_kwargs)
 
     model = AutoModelForSequenceClassification.from_pretrained(
         script_args.model_name,

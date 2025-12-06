@@ -40,10 +40,7 @@ python Section4.py
 ### Downstream reward-model experiment (contracts vs monitoring)
 - Prepare oracle data once: `python prepare_oracle_data.py`
 - Simulate annotated datasets under self-consistency vs expert monitoring and linear/binary contracts (fair monitoring budget):  
-  `python downstream_contract_experiment.py --dataset helpsteer --dataset pku --monitor self --monitor expert --contract git add .
-git commit -m "Initial commit"
-git remote add origin https://github.com/hanzhao-wang/annotator_MS.git
-git push -u origin mainlinear --contract binary`
+  `python downstream_contract_experiment.py --dataset helpsteer --dataset pku --monitor self --monitor expert --contract`
 - The script saves simulated datasets to `statdata/simulated/...` with a standard 80/20 train/test split, corrupts only the train split, and keeps the original test split for evaluation. It emits JSON configs in `paper_experiment_configs/` that point `run.py` to train (simulated) and eval (original) paths. Add `--train` to launch reward-model training immediately for each scenario.
 - **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-eta*/<run>/trainer_state.json`, generate a summary chart with  
   ```bash
