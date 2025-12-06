@@ -3,6 +3,8 @@ from __future__ import annotations
 import inspect
 import os
 import random
+import socket
+import contextlib
 from functools import partial
 from pathlib import Path
 from typing import *
@@ -50,18 +52,30 @@ def set_random_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def _find_free_port() -> str:
+    """Pick an available port on localhost for single-process runs."""
+    with contextlib.closing(
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ) as s:
+        s.bind(("127.0.0.1", 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return str(s.getsockname()[1])
+
+
 def ensure_single_process_dist_defaults():
     """
     DeepSpeed tries to discover MPI settings when rank/world info is missing,
     which pulls in mpi4py/libmpi. On single-device setups we can short-circuit
     that path by pre-populating the environment variables.
     """
+    # Use a dynamic port to avoid collisions when multiple single-process jobs
+    # are launched on the same machine.
     defaults = {
         "RANK": "0",
         "LOCAL_RANK": "0",
         "WORLD_SIZE": "1",
         "MASTER_ADDR": "127.0.0.1",
-        "MASTER_PORT": "29500",
+        "MASTER_PORT": _find_free_port(),
     }
     missing = {k: v for k, v in defaults.items() if k not in os.environ}
     if not missing:
