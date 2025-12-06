@@ -27,13 +27,37 @@ def infer_rm_score_formatted(
 
     dummy_device = "cuda:0"
 
+    def _list_to_plain_text(messages):
+        if isinstance(messages, str):
+            return messages
+        if isinstance(messages, dict):
+            role = messages.get("role")
+            content = messages.get("content")
+            if isinstance(content, (list, dict)):
+                content = _list_to_plain_text(content)
+            if role:
+                return f"{role}: {content}"
+            return str(content)
+        if isinstance(messages, list):
+            buffer = []
+            for msg in messages:
+                buffer.append(_list_to_plain_text(msg))
+            return "\n".join(buffer)
+        return str(messages)
+
+    use_chat_template = bool(getattr(rm_tokenizer, "chat_template", None))
+
+    def _format_inputs(sample):
+        if use_chat_template:
+            return rm_tokenizer.apply_chat_template(
+                sample, tokenize=True, return_tensors="pt"
+            ).to(dummy_device)
+        plain_text = _list_to_plain_text(sample)
+        return rm_tokenizer(plain_text, return_tensors="pt").to(dummy_device)
+
     for i in tqdm(range(len(ds)), desc=f"RM inference with {model_name}"):
-        pos_input = rm_tokenizer.apply_chat_template(
-            ds[i]["chosen"], tokenize=True, return_tensors="pt"
-        ).to(dummy_device)
-        neg_input = rm_tokenizer.apply_chat_template(
-            ds[i]["rejected"], tokenize=True, return_tensors="pt"
-        ).to(dummy_device)
+        pos_input = _format_inputs(ds[i]["chosen"])
+        neg_input = _format_inputs(ds[i]["rejected"])
 
         with torch.no_grad():
             pos_out = rm(pos_input).logits[0][0].item()
