@@ -7,7 +7,7 @@
     "learning_rate": 1e-5,
     "weight_decay": 1e-3,
     "bf16": true,
-    "num_train_epochs": 2,
+    "num_train_epochs": 4,
     "output_path": "./bt_models",
     "gradient_checkpointing": true,
     "optim": "paged_adamw_32bit",
