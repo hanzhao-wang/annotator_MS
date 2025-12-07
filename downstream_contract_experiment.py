@@ -121,11 +121,13 @@ def solve_contract(
     - Principal picks contract maximizing utility subject to agent participation.
 
     Returns:
-        eta_star, (c0, c1, c2), agent_utility, principal_utility
+        eta_star (mean annotation quality), effort_star, (c0, c1, c2),
+        agent_utility, principal_utility
     """
     pref_mean = float(np.mean(np.where(preference_scores < 0.5, 1 - preference_scores, preference_scores)))
 
-    best_tuple = (0.0, (0.0, 0.0, 0.0), float("-inf"), float("-inf"))
+    # (eta, effort, contract, agent_u, principal_u)
+    best_tuple = (0.0, 0.0, (0.0, 0.0, 0.0), float("-inf"), float("-inf"))
 
     efforts = np.array(list(effort_space))
     mean_values = mean_annotation_quality(efforts, monitor_type, pref_mean, delta)
@@ -158,11 +160,18 @@ def solve_contract(
                     continue
 
                 principal_u = mu_values[best_effort_idx] - expected_payment[best_effort_idx]
-                if principal_u > best_tuple[3]:
-                    best_eta = float(best_effort)
-                    best_tuple = (best_eta, (c0, c1, c2), float(best_agent_u), float(principal_u))
+                if principal_u > best_tuple[4]:
+                    effort_star = float(best_effort)
+                    eta_star = float(mean_values[best_effort_idx])  # actual pass probability/quality
+                    best_tuple = (
+                        eta_star,
+                        effort_star,
+                        (c0, c1, c2),
+                        float(best_agent_u),
+                        float(principal_u),
+                    )
 
-    if best_tuple[0] == 0.0 and best_tuple[3] == float("-inf"):
+    if best_tuple[4] == float("-inf"):
         raise RuntimeError("No feasible contract found for the given grids and reservation utility.")
     return best_tuple
 
@@ -263,7 +272,7 @@ def main(
 
         for monitor in monitor_types:
             for contract in contract_types:
-                eta, contract_tuple, agent_u, principal_u = solve_contract(
+                eta, effort, contract_tuple, agent_u, principal_u = solve_contract(
                     preference_scores=preference_scores,
                     monitor_type=monitor,
                     contract_type=contract,
@@ -295,7 +304,7 @@ def main(
                 config_path = save_config(cfg.base_config, sim_train_dir, suffix, eval_dir=sim_eval_dir)
 
                 print(
-                    f"[{cfg.name}] monitor={monitor} contract={contract} -> eta={eta:.3f}, "
+                    f"[{cfg.name}] monitor={monitor} contract={contract} -> eta={eta:.3f} (effort={effort:.3f}), "
                     f"agent_u={agent_u:.3f}, principal_u={principal_u:.3f}, "
                     f"contract={contract_tuple}; config={config_path}"
                 )
