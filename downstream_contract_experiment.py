@@ -275,14 +275,14 @@ def main(
         for monitor in monitor_types:
             for contract in contract_types:
                 if contract=='linear':
-                        c0=np.arange(0,1,1)
-                        c1=np.arange(0,10,0.05)
-                        c2=np.arange(-10,10,0.05)
+                        c0_grid=np.arange(0,1,1)
+                        c1_grid=np.arange(0,10,0.05)
+                        c2_grid=np.arange(-10,10,0.05)
                        
                 elif contract=='binary':
-                        c0=np.arange(0,1.02,0.02)
-                        c1=np.arange(0,10,0.05)
-                        c2=np.arange(-10,10,0.05)
+                        c0_grid=np.arange(0,1.02,0.02)
+                        c1_grid=np.arange(0,10,0.05)
+                        c2_grid=np.arange(-10,10,0.05)
                 
                 eta, effort, contract_tuple, agent_u, principal_u = solve_contract(
                     preference_scores=preference_scores,
