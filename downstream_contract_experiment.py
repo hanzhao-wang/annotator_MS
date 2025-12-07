@@ -113,7 +113,7 @@ def solve_contract(
     delta: float,
     reservation: float = 0.0,
     exp_para: float = 1.2,
-) -> Tuple[float, Tuple[float, float, float], float, float]:
+) -> Tuple[float, float, Tuple[float, float, float], float, float]:
     """
     Simple principal-agent search:
     - Principal proposes (c0, c1, c2)
@@ -258,6 +258,9 @@ def main(
     c1_grid = np.linspace(0.1, 1.0, 10)  # bonus
     c2_grid = np.linspace(0.0, 0.6, 7)  # base
 
+    # First pass: solve contracts and collect summaries
+    summaries = []
+    original_cache: Dict[str, Dataset] = {}
     for ds_key in datasets_:
         cfg = DATASETS[ds_key.lower()]
         if not cfg.base_config.exists():
@@ -267,6 +270,7 @@ def main(
         if not original_path.exists():
             raise FileNotFoundError(f"Oracle data missing at {original_path}. Run prepare_oracle_data.py first.")
         original_ds = load_from_disk(original_path)
+        original_cache[ds_key.lower()] = original_ds
         local_n_monitor = n_monitor or len(original_ds)
         preference_scores = np.array(original_ds["preference_score"], dtype=float)
 
@@ -285,32 +289,64 @@ def main(
                     n_monitor=local_n_monitor,
                     delta=cfg.delta,
                 )
-
-                # Standard train/test split on original data; corrupt only the train part.
-                split_ds = original_ds.train_test_split(test_size=0.2, seed=seed)
-                train_ds = split_ds["train"]
-                eval_ds = split_ds["test"]
-
-                sim_train_ds = corrupt_dataset(train_ds, eta=eta, seed=seed)
-
-                sim_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-eta{eta:.2f}"
-                sim_train_dir = sim_base / "train"
-                sim_eval_dir = sim_base / "eval"
-                sim_train_dir.parent.mkdir(parents=True, exist_ok=True)
-                sim_train_ds.save_to_disk(sim_train_dir.as_posix())
-                eval_ds.save_to_disk(sim_eval_dir.as_posix())
-
-                suffix = f"{cfg.name}-{monitor}-{contract}-eta{eta:.2f}"
-                config_path = save_config(cfg.base_config, sim_train_dir, suffix, eval_dir=sim_eval_dir)
-
-                print(
-                    f"[{cfg.name}] monitor={monitor} contract={contract} -> eta={eta:.3f} (effort={effort:.3f}), "
-                    f"agent_u={agent_u:.3f}, principal_u={principal_u:.3f}, "
-                    f"contract={contract_tuple}; config={config_path}"
+                summaries.append(
+                    {
+                        "ds_key": ds_key.lower(),
+                        "ds_name": cfg.name,
+                        "monitor": monitor,
+                        "contract": contract,
+                        "eta": eta,
+                        "effort": effort,
+                        "agent_u": agent_u,
+                        "principal_u": principal_u,
+                        "contract_tuple": contract_tuple,
+                        "cfg": cfg,
+                    }
                 )
 
-                if do_train:
-                    run_training(config_path)
+    # Print summary of optimal etas before any corruption/training
+    print("\n=== Optimal contracts (used for corruption) ===")
+    for entry in summaries:
+        print(
+            f"[{entry['ds_name']}] monitor={entry['monitor']:<6} "
+            f"contract={entry['contract']:<6} eta={entry['eta']:.3f} "
+            f"effort={entry['effort']:.3f} agent_u={entry['agent_u']:.3f} "
+            f"principal_u={entry['principal_u']:.3f} contract={entry['contract_tuple']}"
+        )
+    print("=== End summary ===\n")
+
+    # Second pass: corrupt data, save configs, and optionally train
+    for entry in summaries:
+        cfg: DatasetConfig = entry["cfg"]
+        original_ds = original_cache[entry["ds_key"]]
+        eta = entry["eta"]
+        monitor = entry["monitor"]
+        contract = entry["contract"]
+
+        split_ds = original_ds.train_test_split(test_size=0.2, seed=seed)
+        train_ds = split_ds["train"]
+        eval_ds = split_ds["test"]
+
+        sim_train_ds = corrupt_dataset(train_ds, eta=eta, seed=seed)
+
+        sim_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-eta{eta:.2f}"
+        sim_train_dir = sim_base / "train"
+        sim_eval_dir = sim_base / "eval"
+        sim_train_dir.parent.mkdir(parents=True, exist_ok=True)
+        sim_train_ds.save_to_disk(sim_train_dir.as_posix())
+        eval_ds.save_to_disk(sim_eval_dir.as_posix())
+
+        suffix = f"{cfg.name}-{monitor}-{contract}-eta{eta:.2f}"
+        config_path = save_config(cfg.base_config, sim_train_dir, suffix, eval_dir=sim_eval_dir)
+
+        print(
+            f"[{cfg.name}] monitor={monitor} contract={contract} -> eta={eta:.3f} (effort={entry['effort']:.3f}), "
+            f"agent_u={entry['agent_u']:.3f}, principal_u={entry['principal_u']:.3f}, "
+            f"contract={entry['contract_tuple']}; config={config_path}"
+        )
+
+        if do_train:
+            run_training(config_path)
 
 
 if __name__ == "__main__":

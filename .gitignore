@@ -3,3 +3,9 @@ __pycache__/
 *.pyo
 *.pyd
 wandb/
+*.ckpt
+*.pth
+*.pt
+*.bin
+checkpoints/
+outputs/checkpoints/
