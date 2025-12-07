@@ -59,7 +59,7 @@ def risk_adjusted_payment(x: np.ndarray, exp_para: float) -> np.ndarray:
     """
     CARA utility: 2*x**0.5
     """
-    return 2*x**0.5
+    return 2*np.clip(x,0,1e10)**0.5
 
 
 def binary_expected_utility(
