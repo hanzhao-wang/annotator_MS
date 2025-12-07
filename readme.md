@@ -46,7 +46,7 @@ python Section4.py
   ```bash
   python Section4_delta_sensitivity.py --delta 0 0.02 0.05 0.1 0.2 0.3 --skip-plots
   ```
-- The script writes plots to `fig_contract/<mode>/...` and a tidy summary table to `fig_contract/delta_sweep_summary.csv` (override with `--summary-csv`). Add `--uniform-n-grid` to force the same n-grid for all datasets instead of PKU’s longer grid.
+- The script writes plots to `fig_contract/<mode>/...` and a tidy summary table to `fig_contract/delta_sweep_summary.csv` (override with `--summary-csv`). 
 
 ### Downstream reward-model experiment (contracts vs monitoring)
 - Prepare oracle data once: `python prepare_oracle_data.py`
@@ -66,8 +66,6 @@ python Section4.py
     --results-root bt_models \
     --output fig/downstream_reward_models.png
   ```  
-  Pass `--metric eval_binary_accuracy --higher-is-better` to switch to accuracy, and `--show` to display the figure interactively. The script writes the plot to `fig/downstream_reward_models.png` and prints per-scenario means/standard deviations so you can compare self vs. expert monitoring performance on the clean eval split.
-  The plot shows four bars per dataset/contract pair: clean, fully corrupted (eta=0), self-corrupted (eta from self monitor), and expert-corrupted (eta from expert monitor).
 
 ## Acknowledgements
 This codebase is built on top of [RLHFlow](https://github.com/RLHFlow/RLHF-Reward-Modeling/tree/main/bradley-terry-rm). Special thanks to its creators for their valuable contributions and insights.
