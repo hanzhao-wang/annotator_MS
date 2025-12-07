@@ -41,25 +41,25 @@ DATASETS: Dict[str, DatasetConfig] = {
     "helpsteer": DatasetConfig(
         name="Helpsteer",
         base_config=Path("paper_experiment_configs/llama-Helpsteer.json"),
-        cost_scale=0.35,
+        cost_scale=0.18,
         mu_scale=1.0,
-        delta=0.05,
+        delta=0.02,
     ),
     "pku": DatasetConfig(
         name="PKU",
         base_config=Path("paper_experiment_configs/llama-PKU.json"),
-        cost_scale=0.45,
+        cost_scale=0.18,
         mu_scale=1.1,
-        delta=0.05,
+        delta=0.02,
     ),
 }
 
 
 def risk_adjusted_payment(x: np.ndarray, exp_para: float) -> np.ndarray:
     """
-    CARA utility: u(x) = alpha - alpha * exp(-alpha x).
+    CARA utility: 2*x**0.5
     """
-    return exp_para - exp_para * np.exp(-exp_para * x)
+    return 2*x**0.5
 
 
 def binary_expected_utility(
@@ -112,7 +112,7 @@ def solve_contract(
     n_monitor: int,
     delta: float,
     reservation: float = 0.0,
-    exp_para: float = 1.2,
+    exp_para: float = 1,
 ) -> Tuple[float, float, Tuple[float, float, float], float, float]:
     """
     Simple principal-agent search:
@@ -132,7 +132,7 @@ def solve_contract(
     efforts = np.array(list(effort_space))
     mean_values = mean_annotation_quality(efforts, monitor_type, pref_mean, delta)
     cost = cost_scale * efforts ** 2
-    mu_values = mu_scale * efforts  # downstream benefit grows linearly with effort/quality
+    mu_values = 0.5* efforts**0.8  # downstream benefit 
 
     for c0 in c0_grid:
         for c1 in c1_grid:
@@ -253,10 +253,8 @@ def main(
     seed: int,
     do_train: bool,
 ):
-    effort_space = np.linspace(0.1, 0.99, 20)
-    c0_grid = np.linspace(0.5, 0.9, 5)  # binary threshold on empirical accuracy
-    c1_grid = np.linspace(0.1, 1.0, 10)  # bonus
-    c2_grid = np.linspace(0.0, 0.6, 7)  # base
+    effort_space = np.linspace(0.1, 0.99, 50)
+
 
     # First pass: solve contracts and collect summaries
     summaries = []
@@ -276,6 +274,16 @@ def main(
 
         for monitor in monitor_types:
             for contract in contract_types:
+                if contract=='linear':
+                        c0=np.arange(0,1,1)
+                        c1=np.arange(0,10,0.05)
+                        c2=np.arange(-10,10,0.05)
+                       
+                elif contract=='binary':
+                        c0=np.arange(0,1.02,0.02)
+                        c1=np.arange(0,10,0.05)
+                        c2=np.arange(-10,10,0.05)
+                
                 eta, effort, contract_tuple, agent_u, principal_u = solve_contract(
                     preference_scores=preference_scores,
                     monitor_type=monitor,
