@@ -122,10 +122,16 @@ def ensure_single_process_dist_defaults():
 @click.argument("script_config_path", type=str)
 @click.option("--seed", type=int, default=None, help="Random seed")
 @click.option("--lr", type=float, default=None, help="Learning rate")
+@click.option(
+    "--save-model/--no-save-model",
+    default=False,
+    help="Save model checkpoints/weights. Default is --no-save-model (metrics/state JSON only).",
+)
 def main(
     script_config_path: str,
     seed: Optional[int] = None,
     lr: Optional[float] = None,
+    save_model: bool = False,
 ):
     parser = HfArgumentParser(ScriptArguments)
     script_args = parser.parse_json_file(json_file=script_config_path)[0]
@@ -170,6 +176,7 @@ def main(
 
     output = str(Path(script_args.output_path) / output_name)
     logger.info(f"save to: {output}")
+    Path(output).mkdir(parents=True, exist_ok=True)
 
     train_dataset, eval_dataset = build_dataset(
         tokenizer,
@@ -207,6 +214,9 @@ def main(
     logger.info(f"train_dataset size: {len(train_dataset)}")
     logger.info(f"eval_dataset size: {len(eval_dataset)}")
 
+    save_strategy = "steps" if save_model else "no"
+    save_steps = script_args.save_every_steps or script_args.eval_every_steps if save_model else None
+
     training_args_kwargs = {
         "output_dir": output,
         "learning_rate": lr,
@@ -218,8 +228,8 @@ def main(
         "evaluation_strategy": "steps",
         "eval_steps": script_args.eval_every_steps,
         # enable checkpointing so trainer_state.json is written
-        "save_strategy": "steps",
-        "save_steps": script_args.save_every_steps or script_args.eval_every_steps,
+        "save_strategy": save_strategy,
+        "save_steps": save_steps,
         "gradient_accumulation_steps": script_args.gradient_accumulation_steps,
         "gradient_checkpointing": script_args.gradient_checkpointing,
         "deepspeed": script_args.deepspeed,
@@ -272,6 +282,9 @@ def main(
             )
 
     training_args = TrainingArguments(**filtered_training_args_kwargs)
+    if not save_model:
+        training_args.save_strategy = "no"  # type: ignore
+        training_args.save_steps = None  # type: ignore
 
     model = AutoModelForSequenceClassification.from_pretrained(
         script_args.model_name,
@@ -359,11 +372,16 @@ def main(
 
     trainer.train()
 
-    logger.info("Finished training, saving the model...")
-    trainer.save_model(str(Path(output) / "last_ckpt"))
-    tokenizer.save_pretrained(str(Path(output) / "last_ckpt"))
-    if script_args.use_lora:
-        model.save_pretrained(str(Path(output) / "last_ckpt"))
+    if not save_model:
+        logger.info("Finished training with --no-save-model default; writing trainer_state.json only.")
+        state_path = Path(output) / "trainer_state.json"
+        state_path.write_text(json.dumps(trainer.state.to_dict(), indent=2))
+    else:
+        logger.info("Finished training, saving the model...")
+        trainer.save_model(str(Path(output) / "last_ckpt"))
+        tokenizer.save_pretrained(str(Path(output) / "last_ckpt"))
+        if script_args.use_lora:
+            model.save_pretrained(str(Path(output) / "last_ckpt"))
 
 
 if __name__ == "__main__":
