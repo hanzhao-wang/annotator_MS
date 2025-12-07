@@ -49,17 +49,14 @@ DATASETS: Dict[str, DatasetConfig] = {
         name="PKU",
         base_config=Path("paper_experiment_configs/llama-PKU.json"),
         cost_scale=0.18,
-        mu_scale=1.1,
+        mu_scale=1,
         delta=0.02,
     ),
 }
 
 
 def risk_adjusted_payment(x: np.ndarray, exp_para: float) -> np.ndarray:
-    """
-    CARA utility: 2*x**0.5
-    """
-    return 2*np.clip(x,0,1e10)**0.5
+    return exp_para-exp_para*np.exp(-exp_para*x)
 
 
 def binary_expected_utility(
