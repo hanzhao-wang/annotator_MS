@@ -376,7 +376,15 @@ def main(
     if not save_model:
         logger.info("Finished training with --no-save-model default; writing trainer_state.json only.")
         state_path = Path(output) / "trainer_state.json"
-        state_path.write_text(json.dumps(trainer.state.to_dict(), indent=2))
+        # transformers 4.43.x TrainerState does not expose to_dict; fall back to its JSON helper
+        state = trainer.state
+        if callable(getattr(state, "to_dict", None)):
+            state_dict = state.to_dict()  # type: ignore[call-arg]
+        elif callable(getattr(state, "to_json_string", None)):
+            state_dict = json.loads(state.to_json_string())  # type: ignore[arg-type]
+        else:
+            state_dict = state.__dict__
+        state_path.write_text(json.dumps(state_dict, indent=2))
     else:
         logger.info("Finished training, saving the model...")
         trainer.save_model(str(Path(output) / "last_ckpt"))
