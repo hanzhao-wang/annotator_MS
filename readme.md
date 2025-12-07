@@ -37,18 +37,36 @@ python Section3.py
 python Section4.py
 ```
 
+### Delta sensitivity for Section 4
+- Sweep disagreement probabilities (`delta`) across self-consistency and expert monitoring with the same contract grids used in Section 4 and dump results to CSV/plots:  
+  ```bash
+  python Section4_delta_sensitivity.py
+  ```
+- Custom deltas and CSV-only (skip EPS plots):  
+  ```bash
+  python Section4_delta_sensitivity.py --delta 0 0.02 0.05 0.1 0.2 0.3 --skip-plots
+  ```
+- The script writes plots to `fig_contract/<mode>/...` and a tidy summary table to `fig_contract/delta_sweep_summary.csv` (override with `--summary-csv`). Add `--uniform-n-grid` to force the same n-grid for all datasets instead of PKU’s longer grid.
+
 ### Downstream reward-model experiment (contracts vs monitoring)
 - Prepare oracle data once: `python prepare_oracle_data.py`
 - Simulate annotated datasets under self-consistency vs expert monitoring and linear/binary contracts (fair monitoring budget):  
   `python downstream_contract_experiment.py --dataset helpsteer --dataset pku --monitor self --monitor expert --contract`
 - The script saves simulated datasets to `statdata/simulated/...` with a standard 80/20 train/test split, corrupts only the train split, and keeps the original test split for evaluation. It emits JSON configs in `paper_experiment_configs/` that point `run.py` to train (simulated) and eval (original) paths. Add `--train` to launch reward-model training immediately for each scenario.
-- **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-eta*/<run>/trainer_state.json`, generate a summary chart (default is oracle CE loss, lower is better) with  
+- Baselines generated automatically for every dataset/monitor/contract combination:
+  - `*-clean`: training split kept uncorrupted.
+  - `*-fully_corrupted`: training split corrupted with eta=0 (complete noise).
+  - `*-eta{X}`: training split corrupted using the solved eta for that monitor (self/expert).
+  - `*-half_corrupted`: optional stress-test mix, 50% clean + 50% eta=0 (not used in the 4-bar plot).
+  Use the same command as above (optionally with `--train`) and all configs/datasets will be written and, if `--train` is set, trained in sequence.
+- **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-{eta*/clean/fully_corrupted}/<run>/trainer_state.json`, generate a summary chart (default is oracle CE loss, lower is better) with  
   ```bash
   python3 visualize_downstream_rm.py \
     --results-root bt_models \
     --output fig/downstream_reward_models.png
   ```  
   Pass `--metric eval_binary_accuracy --higher-is-better` to switch to accuracy, and `--show` to display the figure interactively. The script writes the plot to `fig/downstream_reward_models.png` and prints per-scenario means/standard deviations so you can compare self vs. expert monitoring performance on the clean eval split.
+  The plot shows four bars per dataset/contract pair: clean, fully corrupted (eta=0), self-corrupted (eta from self monitor), and expert-corrupted (eta from expert monitor).
 
 ## Acknowledgements
 This codebase is built on top of [RLHFlow](https://github.com/RLHFlow/RLHF-Reward-Modeling/tree/main/bradley-terry-rm). Special thanks to its creators for their valuable contributions and insights.

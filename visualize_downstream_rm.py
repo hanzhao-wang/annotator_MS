@@ -13,6 +13,8 @@ import numpy as np
 DATASET_ORDER = ["Helpsteer", "PKU"]
 CONTRACT_ORDER = ["linear", "binary"]
 MONITOR_ORDER = ["self", "expert"]
+CONDITION_ORDER = ["clean", "half_corrupted", "fully_corrupted", "eta"]
+CONDITION_BAR_ORDER = ["clean", "fully_corrupted", "self_corrupted", "expert_corrupted"]
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,7 @@ class ScenarioMeta:
     dataset: str
     monitor: str
     contract: str
+    condition: str  # e.g., "clean", "half_corrupted", "eta0.42", "unspecified"
     eta: float | None
     name: str
 
@@ -34,7 +37,7 @@ class RunRecord:
 def parse_scenario_dir(path: Path) -> ScenarioMeta | None:
     """
     Training outputs created by downstream_contract_experiment.py are grouped as:
-        bt_models/<Dataset>-<monitor>-<contract>-eta<val>/<run_name>/
+        bt_models/<Dataset>-<monitor>-<contract>-{eta<val>|clean|half_corrupted|fully_corrupted}/<run_name>/
     This helper parses the scenario metadata from the parent directory name.
     """
     if not path.is_dir():
@@ -48,19 +51,35 @@ def parse_scenario_dir(path: Path) -> ScenarioMeta | None:
     monitor = parts[1].lower()
     contract = parts[2].lower()
 
-    eta = None
+    eta: float | None = None
+    condition = "unspecified"
     for token in parts[3:]:
-        if token.startswith("eta"):
+        low_tok = token.lower()
+        if low_tok == "clean":
+            condition = "clean"
+            eta = None
+            break
+        if low_tok in ("half_corrupted", "halfcorrupted", "half"):
+            condition = "half_corrupted"
+            eta = None
+            break
+        if low_tok == "fully_corrupted":
+            condition = "fully_corrupted"
+            eta = None
+            break
+        if low_tok.startswith("eta"):
             try:
-                eta = float(token.replace("eta", ""))
+                eta = float(low_tok.replace("eta", ""))
             except ValueError:
                 eta = None
+            condition = f"eta{eta:.2f}" if eta is not None else low_tok
             break
 
     return ScenarioMeta(
         dataset=dataset,
         monitor=monitor,
         contract=contract,
+        condition=condition,
         eta=eta,
         name=path.name,
     )
@@ -123,15 +142,35 @@ def collect_run_records(
 def summarize_by_group(
     records: Sequence[RunRecord],
 ) -> Dict[Tuple[str, str, str], List[float]]:
+    """
+    Collapse runs into dataset/contract/condition_label buckets where
+    condition_label is one of: clean, fully_corrupted, self_corrupted, expert_corrupted.
+    Other conditions are ignored for plotting.
+    """
     aggregates: Dict[Tuple[str, str, str], List[float]] = defaultdict(list)
     for rec in records:
+        label = scenario_to_condition_label(rec.scenario)
+        if label is None:
+            continue
         key = (
             rec.scenario.dataset,
             rec.scenario.contract,
-            rec.scenario.monitor,
+            label,
         )
         aggregates[key].append(rec.metric_value)
     return aggregates
+
+
+def scenario_to_condition_label(scenario: ScenarioMeta) -> str | None:
+    if scenario.condition == "clean":
+        return "clean"
+    if scenario.condition == "fully_corrupted":
+        return "fully_corrupted"
+    if scenario.condition.startswith("eta") and scenario.monitor == "self":
+        return "self_corrupted"
+    if scenario.condition.startswith("eta") and scenario.monitor == "expert":
+        return "expert_corrupted"
+    return None
 
 
 def build_group_order(
@@ -167,17 +206,17 @@ def plot_monitor_comparison(
     if not group_order:
         raise click.ClickException("No valid (dataset, contract) groups found.")
 
-    width = 0.35
+    width = 0.18
     x = np.arange(len(group_order))
 
-    fig, ax = plt.subplots(figsize=(10, 4.5))
+    fig, ax = plt.subplots(figsize=(12, 5))
     all_heights = []
-    for idx, monitor in enumerate(MONITOR_ORDER):
+    for idx, condition in enumerate(CONDITION_BAR_ORDER):
         heights = []
         errors = []
         counts = []
-        for group in group_order:
-            samples = grouped_stats.get((*group, monitor), [])
+        for dataset, contract in group_order:
+            samples = grouped_stats.get((dataset, contract, condition), [])
             if samples:
                 arr = np.array(samples, dtype=float)
                 heights.append(float(np.mean(arr)))
@@ -188,15 +227,15 @@ def plot_monitor_comparison(
                 errors.append(0.0)
                 counts.append(0)
         all_heights.extend([h for h in heights if not np.isnan(h)])
-        offset = (idx - (len(MONITOR_ORDER) - 1) / 2) * width
+        offset = (idx - (len(CONDITION_BAR_ORDER) - 1) / 2) * width
         bars = ax.bar(
             x + offset,
             heights,
             width,
-            label=f"{monitor.title()} monitor",
+            label=condition.replace("_", " ").title(),
             yerr=errors,
             capsize=6,
-            alpha=0.85,
+            alpha=0.9,
         )
         for bar, count in zip(bars, counts):
             if np.isnan(bar.get_height()) or count == 0:
@@ -223,7 +262,7 @@ def plot_monitor_comparison(
         pad = max(0.05 * (hi - lo), 0.05 * max(abs(lo), 1.0))
         ax.set_ylim(lo - pad, hi + pad)
     ax.legend()
-    ax.set_title("Reward-model eval by monitoring regime")
+    ax.set_title("Reward-model eval by monitoring regime and data condition")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -243,27 +282,27 @@ def print_summary_table(
     click.echo("\nAggregated evaluation metrics:")
     dataset_priority = {name: idx for idx, name in enumerate(DATASET_ORDER)}
     contract_priority = {name: idx for idx, name in enumerate(CONTRACT_ORDER)}
-    monitor_priority = {name: idx for idx, name in enumerate(MONITOR_ORDER)}
+    condition_priority = {name: idx for idx, name in enumerate(CONDITION_BAR_ORDER)}
 
     sorted_keys = sorted(
         grouped_stats.keys(),
         key=lambda item: (
             dataset_priority.get(item[0], len(dataset_priority)),
             contract_priority.get(item[1], len(contract_priority)),
-            monitor_priority.get(item[2], len(monitor_priority)),
+            condition_priority.get(item[2], len(condition_priority)),
             item[0],
             item[1],
             item[2],
         ),
     )
 
-    for dataset, contract, monitor in sorted_keys:
-        samples = grouped_stats[(dataset, contract, monitor)]
+    for dataset, contract, condition in sorted_keys:
+        samples = grouped_stats[(dataset, contract, condition)]
         arr = np.array(samples, dtype=float)
         mean_val = float(np.mean(arr))
         std_val = float(np.std(arr)) if arr.size > 1 else 0.0
         click.echo(
-            f"- {dataset} / {contract} / {monitor}: "
+            f"- {dataset} / {contract} / {condition}: "
             f"{metric_name}={mean_val:.4f} (n={arr.size}, std={std_val:.4f})"
         )
 
@@ -307,8 +346,8 @@ def main(
     show: bool,
 ):
     """
-    Visualize reward-model performance grouped by monitoring regime (self vs expert)
-    for the downstream contract experiment described in readme.md.
+    Visualize reward-model performance grouped by data condition:
+    clean, fully corrupted (eta=0), self-corrupted (eta from self-monitor), expert-corrupted (eta from expert-monitor).
     """
     records = collect_run_records(results_root, metric_name, higher_is_better)
     if not records:

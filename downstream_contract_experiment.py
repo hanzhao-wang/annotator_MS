@@ -22,7 +22,7 @@ from typing import Dict, Iterable, List, Tuple
 
 import click
 import numpy as np
-from datasets import Dataset, load_from_disk
+from datasets import Dataset, concatenate_datasets, load_from_disk
 from numpy.random import default_rng
 from scipy.stats import binom
 
@@ -386,6 +386,68 @@ def main(
 
         if do_train:
             run_training(config_path)
+
+        # Clean benchmark: keep training data uncorrupted to compare against simulated noise.
+        clean_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-clean"
+        clean_train_dir = clean_base / "train"
+        clean_eval_dir = clean_base / "eval"
+        clean_train_dir.parent.mkdir(parents=True, exist_ok=True)
+        train_ds.save_to_disk(clean_train_dir.as_posix())
+        eval_ds.save_to_disk(clean_eval_dir.as_posix())
+
+        clean_suffix = f"{cfg.name}-{monitor}-{contract}-clean"
+        clean_config_path = save_config(cfg.base_config, clean_train_dir, clean_suffix, eval_dir=clean_eval_dir)
+
+        print(
+            f"[{cfg.name}] monitor={monitor} contract={contract} -> clean benchmark (no corruption), "
+            f"config={clean_config_path}"
+        )
+
+        if do_train:
+            run_training(clean_config_path)
+
+        # Half-and-half benchmark: mix clean data with a fully corrupted half (eta=0.0) to stress robustness.
+        halves = train_ds.train_test_split(test_size=0.5, seed=seed)
+        fully_corrupted_half = corrupt_dataset(halves["test"], eta=0.0, seed=seed + 1)
+        mixed_train_ds = concatenate_datasets([halves["train"], fully_corrupted_half]).shuffle(seed=seed)
+
+        half_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-half_corrupted"
+        half_train_dir = half_base / "train"
+        half_eval_dir = half_base / "eval"
+        half_train_dir.parent.mkdir(parents=True, exist_ok=True)
+        mixed_train_ds.save_to_disk(half_train_dir.as_posix())
+        eval_ds.save_to_disk(half_eval_dir.as_posix())
+
+        half_suffix = f"{cfg.name}-{monitor}-{contract}-half_corrupted"
+        half_config_path = save_config(cfg.base_config, half_train_dir, half_suffix, eval_dir=half_eval_dir)
+
+        print(
+            f"[{cfg.name}] monitor={monitor} contract={contract} -> half-corrupted benchmark (50% clean / 50% eta=0), "
+            f"config={half_config_path}"
+        )
+
+        if do_train:
+            run_training(half_config_path)
+
+        # Fully corrupted benchmark: corrupt the entire train split with eta=0 (complete noise).
+        full_corrupted_train_ds = corrupt_dataset(train_ds, eta=0.0, seed=seed + 2)
+        full_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-fully_corrupted"
+        full_train_dir = full_base / "train"
+        full_eval_dir = full_base / "eval"
+        full_train_dir.parent.mkdir(parents=True, exist_ok=True)
+        full_corrupted_train_ds.save_to_disk(full_train_dir.as_posix())
+        eval_ds.save_to_disk(full_eval_dir.as_posix())
+
+        full_suffix = f"{cfg.name}-{monitor}-{contract}-fully_corrupted"
+        full_config_path = save_config(cfg.base_config, full_train_dir, full_suffix, eval_dir=full_eval_dir)
+
+        print(
+            f"[{cfg.name}] monitor={monitor} contract={contract} -> fully corrupted benchmark (eta=0 across train), "
+            f"config={full_config_path}"
+        )
+
+        if do_train:
+            run_training(full_config_path)
 
 
 if __name__ == "__main__":
