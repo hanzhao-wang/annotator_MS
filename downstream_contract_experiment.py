@@ -175,16 +175,50 @@ def solve_contract(
 
 def corrupt_dataset(ds: Dataset, eta: float, seed: int) -> Dataset:
     """
-    Simulate noisy annotations: preference_score is pulled towards 0.5 and labels may flip with prob (1-eta).
+    Simulate noisy annotations by corrupting the *scores* that training uses.
+
+    The trainer in run.py recomputes labels/preference_scores from
+    (chosen_score, rejected_score), so we must perturb those columns directly.
+    We (a) pull the preference probability toward 0.5, and (b) flip the
+    preference direction with prob (1 - eta).
     """
     rng = default_rng(seed)
 
+    def _logit(p: float) -> float:
+        # Clip to avoid infinities
+        p = np.clip(p, 1e-6, 1 - 1e-6)
+        return float(np.log(p / (1 - p)))
+
+    def _sigmoid(x: float) -> float:
+        return float(1 / (1 + np.exp(-x)))
+
     def _mutate(sample):
-        score = float(sample["preference_score"])
-        sample["preference_score"] = eta * score + (1 - eta) * 0.5
+        chosen_score = float(sample["chosen_score"])
+        rejected_score = float(sample["rejected_score"])
+
+        # Work in terms of mean + gap so we can preserve score scale.
+        mean_score = 0.5 * (chosen_score + rejected_score)
+        gap = chosen_score - rejected_score
+
+        # Original preference prob (either stored or recomputed from gap).
+        orig_pref = float(sample.get("preference_score", _sigmoid(gap)))
+
+        # Pull probability toward 0.5
+        corrupted_pref = eta * orig_pref + (1 - eta) * 0.5
+        corrupted_gap = _logit(corrupted_pref)
+
+        # Flip direction with probability (1 - eta)
+        if rng.random() > eta:
+            corrupted_gap = -corrupted_gap
+
+        # Reconstruct scores with the same mean but corrupted gap
+        sample["chosen_score"] = mean_score + corrupted_gap / 2
+        sample["rejected_score"] = mean_score - corrupted_gap / 2
+        sample["preference_score"] = _sigmoid(corrupted_gap)
+
+        # Keep a consistent binary label if present (not used in current configs)
         if "label" in sample:
-            if rng.random() > eta:
-                sample["label"] = int(1 - int(sample["label"]))
+            sample["label"] = int(corrupted_gap > 0)
         return sample
 
     return ds.map(_mutate, desc=f"Simulating annotations (eta={eta:.3f})")
