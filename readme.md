@@ -61,7 +61,7 @@ python Section4.py
 - `run.py` defaults to *not* saving model checkpoints/weights; it still writes `trainer_state.json` (metrics/state). Add `--save-model` when invoking `run.py` if you want checkpoints and weights under `last_ckpt/`.
 - **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-{eta*/clean/fully_corrupted}/<run>/trainer_state.json`, generate a summary chart (default is oracle CE loss, lower is better) with  
   ```bash
-  python3 visualize_downstream_rm.py \
+  python visualize_downstream_rm.py \
     --results-root bt_models \
     --output fig/downstream_reward_models.png
   ```  

@@ -232,6 +232,11 @@ def save_config(
     seed: int | None = None,
 ) -> Path:
     cfg = json.loads(base_config.read_text())
+    # Ensure training actually uses the (potentially corrupted) preference scores
+    # by deriving labels from score gaps instead of treating every pair as positive.
+    cfg["label_type"] = "oracle"
+    # Keep the trainer aligned with the soft labels so corruption impacts training.
+    cfg["trainer_type"] = "oraclece"
     cfg["train_set_path"] = str(train_dir)
     if eval_dir is not None:
         cfg["eval_set_path"] = str(eval_dir)
