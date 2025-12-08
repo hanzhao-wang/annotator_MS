@@ -297,7 +297,7 @@ def main(
 
     # First pass: solve contracts and collect summaries
     summaries = []
-    original_cache: Dict[str, Dataset] = {}
+    split_cache: Dict[str, Dict[str, Dataset]] = {}
     for ds_key in datasets_:
         cfg = DATASETS[ds_key.lower()]
         if not cfg.base_config.exists():
@@ -307,7 +307,7 @@ def main(
         if not original_path.exists():
             raise FileNotFoundError(f"Oracle data missing at {original_path}. Run prepare_oracle_data.py first.")
         original_ds = load_from_disk(original_path)
-        original_cache[ds_key.lower()] = original_ds
+        split_cache[ds_key.lower()] = original_ds.train_test_split(test_size=0.2, seed=seed)
         local_n_monitor = n_monitor or len(original_ds)
         preference_scores = np.array(original_ds["preference_score"], dtype=float)
 
@@ -365,12 +365,11 @@ def main(
     # Second pass: corrupt data, save configs, and optionally train
     for entry in summaries:
         cfg: DatasetConfig = entry["cfg"]
-        original_ds = original_cache[entry["ds_key"]]
         eta = entry["eta"]
         monitor = entry["monitor"]
         contract = entry["contract"]
 
-        split_ds = original_ds.train_test_split(test_size=0.2, seed=seed)
+        split_ds = split_cache[entry["ds_key"]]
         train_ds = split_ds["train"]
         eval_ds = split_ds["test"]
 
