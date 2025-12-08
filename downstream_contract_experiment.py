@@ -224,7 +224,13 @@ def corrupt_dataset(ds: Dataset, eta: float, seed: int) -> Dataset:
     return ds.map(_mutate, desc=f"Simulating annotations (eta={eta:.3f})")
 
 
-def save_config(base_config: Path, train_dir: Path, suffix: str, eval_dir: Path | None = None) -> Path:
+def save_config(
+    base_config: Path,
+    train_dir: Path,
+    suffix: str,
+    eval_dir: Path | None = None,
+    seed: int | None = None,
+) -> Path:
     cfg = json.loads(base_config.read_text())
     cfg["train_set_path"] = str(train_dir)
     if eval_dir is not None:
@@ -233,6 +239,8 @@ def save_config(base_config: Path, train_dir: Path, suffix: str, eval_dir: Path 
         cfg["eval_set_path"] = str(train_dir)
     output_root = Path(cfg.get("output_path", "./bt_models"))
     cfg["output_path"] = str(output_root / suffix)
+    if seed is not None:
+        cfg["seed"] = seed
 
     out_path = base_config.with_name(f"{base_config.stem}-{suffix}.json")
     out_path.write_text(json.dumps(cfg, indent=2))
@@ -376,7 +384,9 @@ def main(
         eval_ds.save_to_disk(sim_eval_dir.as_posix())
 
         suffix = f"{cfg.name}-{monitor}-{contract}-eta{eta:.2f}"
-        config_path = save_config(cfg.base_config, sim_train_dir, suffix, eval_dir=sim_eval_dir)
+        config_path = save_config(
+            cfg.base_config, sim_train_dir, suffix, eval_dir=sim_eval_dir, seed=seed
+        )
 
         print(
             f"[{cfg.name}] monitor={monitor} contract={contract} -> eta={eta:.3f} (effort={entry['effort']:.3f}), "
@@ -396,7 +406,9 @@ def main(
         eval_ds.save_to_disk(clean_eval_dir.as_posix())
 
         clean_suffix = f"{cfg.name}-{monitor}-{contract}-clean"
-        clean_config_path = save_config(cfg.base_config, clean_train_dir, clean_suffix, eval_dir=clean_eval_dir)
+        clean_config_path = save_config(
+            cfg.base_config, clean_train_dir, clean_suffix, eval_dir=clean_eval_dir, seed=seed
+        )
 
         print(
             f"[{cfg.name}] monitor={monitor} contract={contract} -> clean benchmark (no corruption), "
@@ -407,7 +419,7 @@ def main(
             run_training(clean_config_path)
 
         # Fully corrupted benchmark: corrupt the entire train split with eta=0 (complete noise).
-        full_corrupted_train_ds = corrupt_dataset(train_ds, eta=0.0, seed=seed + 2)
+        full_corrupted_train_ds = corrupt_dataset(train_ds, eta=0.0, seed=seed)
         full_base = Path("statdata") / "simulated" / f"{cfg.name}-{monitor}-{contract}-fully_corrupted"
         full_train_dir = full_base / "train"
         full_eval_dir = full_base / "eval"
@@ -416,7 +428,9 @@ def main(
         eval_ds.save_to_disk(full_eval_dir.as_posix())
 
         full_suffix = f"{cfg.name}-{monitor}-{contract}-fully_corrupted"
-        full_config_path = save_config(cfg.base_config, full_train_dir, full_suffix, eval_dir=full_eval_dir)
+        full_config_path = save_config(
+            cfg.base_config, full_train_dir, full_suffix, eval_dir=full_eval_dir, seed=seed
+        )
 
         print(
             f"[{cfg.name}] monitor={monitor} contract={contract} -> fully corrupted benchmark (eta=0 across train), "
