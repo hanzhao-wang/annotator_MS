@@ -57,7 +57,6 @@ python Section4.py
   - `*-clean`: training split kept uncorrupted.
   - `*-fully_corrupted`: training split corrupted with eta=0 (complete noise).
   - `*-eta{X}`: training split corrupted using the solved eta for that monitor (self/expert).
-  - `*-half_corrupted`: optional stress-test mix, 50% clean + 50% eta=0 (not used in the 4-bar plot).
   Use the same command as above (optionally with `--train`) and all configs/datasets will be written and, if `--train` is set, trained in sequence.
 - `run.py` defaults to *not* saving model checkpoints/weights; it still writes `trainer_state.json` (metrics/state). Add `--save-model` when invoking `run.py` if you want checkpoints and weights under `last_ckpt/`.
 - **Plotting the downstream comparison:** once reward-model runs finish and you have `bt_models/<Dataset>-<monitor>-<contract>-{eta*/clean/fully_corrupted}/<run>/trainer_state.json`, generate a summary chart (default is oracle CE loss, lower is better) with  

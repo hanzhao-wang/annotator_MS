@@ -13,7 +13,6 @@ import numpy as np
 DATASET_ORDER = ["Helpsteer", "PKU"]
 CONTRACT_ORDER = ["linear", "binary"]
 MONITOR_ORDER = ["self", "expert"]
-CONDITION_ORDER = ["clean", "half_corrupted", "fully_corrupted", "eta"]
 CONDITION_BAR_ORDER = ["clean", "fully_corrupted", "self_corrupted", "expert_corrupted"]
 
 
@@ -37,7 +36,8 @@ class RunRecord:
 def parse_scenario_dir(path: Path) -> ScenarioMeta | None:
     """
     Training outputs created by downstream_contract_experiment.py are grouped as:
-        bt_models/<Dataset>-<monitor>-<contract>-{eta<val>|clean|half_corrupted|fully_corrupted}/<run_name>/
+        bt_models/<Dataset>-<monitor>-<contract>-{eta<val>|clean|fully_corrupted}/<run_name>/
+    Legacy half_corrupted runs are still parsed but omitted from aggregation.
     This helper parses the scenario metadata from the parent directory name.
     """
     if not path.is_dir():
@@ -161,6 +161,22 @@ def summarize_by_group(
     return aggregates
 
 
+def collect_solved_etas(
+    records: Sequence[RunRecord],
+) -> Dict[Tuple[str, str, str], float]:
+    """
+    Extract solved eta values keyed by (dataset, contract, monitor) from scenario names.
+    If multiple runs share the same key, the last observed eta is kept (they should match).
+    """
+    solved: Dict[Tuple[str, str, str], float] = {}
+    for rec in records:
+        if rec.scenario.eta is None:
+            continue
+        key = (rec.scenario.dataset, rec.scenario.contract, rec.scenario.monitor)
+        solved[key] = rec.scenario.eta
+    return solved
+
+
 def scenario_to_condition_label(scenario: ScenarioMeta) -> str | None:
     if scenario.condition == "clean":
         return "clean"
@@ -278,6 +294,7 @@ def plot_monitor_comparison(
 def print_summary_table(
     grouped_stats: Dict[Tuple[str, str, str], List[float]],
     metric_name: str,
+    solved_etas: Dict[Tuple[str, str, str], float],
 ):
     click.echo("\nAggregated evaluation metrics:")
     dataset_priority = {name: idx for idx, name in enumerate(DATASET_ORDER)}
@@ -305,6 +322,24 @@ def print_summary_table(
             f"- {dataset} / {contract} / {condition}: "
             f"{metric_name}={mean_val:.4f} (n={arr.size}, std={std_val:.4f})"
         )
+
+    if solved_etas:
+        click.echo("\nSolved eta values (from scenario names):")
+        sorted_eta_keys = sorted(
+            solved_etas.keys(),
+            key=lambda item: (
+                dataset_priority.get(item[0], len(dataset_priority)),
+                contract_priority.get(item[1], len(contract_priority)),
+                MONITOR_ORDER.index(item[2]) if item[2] in MONITOR_ORDER else len(MONITOR_ORDER),
+                item[0],
+                item[1],
+                item[2],
+            ),
+        )
+        for dataset, contract, monitor in sorted_eta_keys:
+            click.echo(
+                f"- {dataset} / {contract} / {monitor}: eta={solved_etas[(dataset, contract, monitor)]:.4f}"
+            )
 
 
 @click.command()
@@ -356,7 +391,8 @@ def main(
         )
 
     grouped_stats = summarize_by_group(records)
-    print_summary_table(grouped_stats, metric_name)
+    solved_etas = collect_solved_etas(records)
+    print_summary_table(grouped_stats, metric_name, solved_etas)
     plot_monitor_comparison(
         grouped_stats, metric_name, output, show, dpi, higher_is_better
     )
