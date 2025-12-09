@@ -200,18 +200,24 @@ def main(
             seed=seed,
         )
 
-    n_samples=4* 1024
+    target_samples = script_args.max_train_size or len(train_dataset)
     if script_args.selected_pos_ratio is not None:
         train_dataset = post_filter_by_ratio(
             train_dataset,
-            # ! 32* 1024 data samples for training 16*1024,12*1024, 8*1024, 4*1024, 
-            n_samples=n_samples,
+            n_samples=target_samples,
             positive_ratio=script_args.selected_pos_ratio,
             seed=seed,
             select=script_args.select_method,
         )
-    
-    output_name += "train_size" + str(n_samples/1024)
+        logger.info(
+            "post_filter_by_ratio -> %s samples (pos_ratio=%s)",
+            len(train_dataset),
+            script_args.selected_pos_ratio,
+        )
+    else:
+        logger.info("selected_pos_ratio not set; using full train set.")
+
+    output_name += f"train_size{len(train_dataset) / 1024:.1f}"
     logger.info(f"train_dataset size: {len(train_dataset)}")
     logger.info(f"eval_dataset size: {len(eval_dataset)}")
 
