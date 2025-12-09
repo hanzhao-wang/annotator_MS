@@ -49,7 +49,24 @@ def _extract_pairwise_logits_and_labels(eval_pred):
     """
     logits = eval_pred.predictions
     if isinstance(logits, (tuple, list)):
-        logits = logits[0]
+        # Some HF versions propagate a tuple of (rewards_j, rewards_k). If we
+        # detect that pattern, interleave them to recover the original ordering.
+        if (
+            len(logits) == 2
+            and hasattr(logits[0], "__len__")
+            and hasattr(logits[1], "__len__")
+        ):
+            rewards_j = np.asarray(logits[0], dtype=float).reshape(-1)
+            rewards_k = np.asarray(logits[1], dtype=float).reshape(-1)
+            if rewards_j.size == rewards_k.size and rewards_j.size > 0:
+                merged = np.empty(rewards_j.size + rewards_k.size, dtype=float)
+                merged[0::2] = rewards_j
+                merged[1::2] = rewards_k
+                logits = merged
+            else:
+                logits = rewards_j
+        else:
+            logits = logits[0]
     logits = np.asarray(logits, dtype=float).squeeze()
     if logits.ndim > 1:
         logits = logits.reshape(-1)
@@ -152,7 +169,12 @@ class RewardTrainer(Trainer):
         loss = -nn.functional.logsigmoid((rewards_j - rewards_k)).mean()
 
         if return_outputs:
-            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
+            return loss, {
+                # keep the original interleaved rewards so evaluation metrics can pair j/k correctly
+                "logits": rewards,
+                "rewards_j": rewards_j,
+                "rewards_k": rewards_k,
+            }
         return loss
 
 
@@ -186,7 +208,11 @@ class RewardTrainerWithOracleCE(Trainer):
         ).mean()
 
         if return_outputs:
-            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
+            return loss, {
+                "logits": rewards,
+                "rewards_j": rewards_j,
+                "rewards_k": rewards_k,
+            }
         return loss
 
 
@@ -228,7 +254,11 @@ class RewardTrainerWithRingeMargin(Trainer):
         ).mean()
 
         if return_outputs:
-            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
+            return loss, {
+                "logits": rewards,
+                "rewards_j": rewards_j,
+                "rewards_k": rewards_k,
+            }
         return loss
 
 
@@ -300,5 +330,9 @@ class BTTRewardTrainer(Trainer):
         ) / (bsz / 2)
 
         if return_outputs:
-            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
+            return loss, {
+                "logits": rewards,
+                "rewards_j": rewards_j,
+                "rewards_k": rewards_k,
+            }
         return loss
